@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import React from "react";
 import { useApi } from "@/lib/contexts/ApiContext";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
-import { fetchModelCapabilities } from "@/modules/models/api/models";
+import { CloudBackend } from "@/modules/models/lib/backend";
 import { inferCapabilities } from "@/modules/models/lib/inferCapabilities";
 import { queryKeys } from "@/lib/hooks/queryKeys";
 import {
@@ -23,7 +23,7 @@ function useApiCapabilities(modelName: string | undefined): string[] | null {
     queryKey: queryKeys.modelCapabilities(modelName ?? null),
     queryFn: () => {
       if (!modelName) return Promise.resolve<string[]>([]);
-      return fetchModelCapabilities(client, modelName);
+      return new CloudBackend(client).fetchModelCapabilities(modelName);
     },
     // Only run when both the model is set and the user is signed in (the endpoint requires auth).
     enabled: Boolean(modelName) && isAuthenticated,
