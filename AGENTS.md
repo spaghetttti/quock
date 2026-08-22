@@ -316,6 +316,21 @@ The parser at `src/components/ui/markdown/parseMarkdown.ts` is intentionally per
 
 ---
 
+## Self-hosted connection (Open WebUI)
+
+An opt-in alternate mode where Quock talks to a self-hosted Open WebUI instance that **fronts `ollama.com`** for chat persistence and cross-device sync. The model still runs on `ollama.com`; the gateway runs no model. The non-negotiables above (#3, #4) carry the carve-outs that permit it; this section is the binding rules, and a separate design spec holds the full plan.
+
+- **Opt-in, default off.** `connectionMode: 'ollama-cloud' | 'open-webui'` lives in `src/lib/stores/settings.store.ts` (Zustand + MMKV `persist`). The default is `'ollama-cloud'`; the existing Ollama Cloud experience is untouched.
+- **Manual endpoint, never discovered.** The user types the Open WebUI base URL (LAN IP or Tailscale IP) in Settings — no mDNS, no scan, no probing. This is what keeps non-negotiable #3's "no localhost discovery" intact.
+- **Bearer auth to the gateway, Ed25519 dormant.** The Open WebUI client authenticates with an `Authorization: Bearer` token (an Open WebUI API key preferred, or a sign-in JWT) stored in `expo-secure-store` under a separate namespace. The Ed25519 keypair is still generated and stored; it is unused in this mode. The only permitted exception to #4's "no JWT" — and only for the gateway, never for `ollama.com`.
+- **Gateway fronts `ollama.com`; no local inference.** Open WebUI is configured (by the user, in its own admin) to reach `ollama.com`. Quock never assumes a local `ollama` daemon and never calls raw Ollama `/api/tags`; it calls the gateway's OpenAI-compatible `/api/chat/completions` and `/api/models`. A gateway that runs a model locally is out of scope — that would re-trigger #3.
+- **Server-side persistence, local mirror.** Open WebUI is the source of truth for chat history; Quock's SQLite becomes a mirror. Reconciliation is additive only (upsert by remote id, soft-delete tombstones) — no destructive DB ops. The existing `pending → streaming → complete` message lifecycle and the `status` column stay the source of truth.
+- **Backend abstraction, not a fork.** A `Backend` interface (`src/lib/api/backend.ts`) with two impls — `CloudBackend` (existing, Ed25519) and `OpenWebUiBackend` (new, bearer) — is introduced as a no-behavior-change refactor first; the chat/models hooks select the impl by `connectionMode`. The "components never call `fetch` / `useQuery` directly" rules hold for both modes.
+- **Streaming via the existing pipeline.** Open WebUI's SSE (`data: {json}\n\n`, terminated by `[DONE]`) is parsed by a hand-rolled pure helper (`src/modules/chat/lib/sseStream.ts`, unit-tested) and fed into the existing `streamPipeline.ts`. No new SSE dependency; `expo/fetch` stays the transport.
+- **Disclosure.** The Connection screen states that chats in this mode are stored on the user's Open WebUI server (not just on-device) and that Open WebUI is a third-party project Quock is not affiliated with (mirrors non-negotiable #1's spirit).
+
+---
+
 ## Design system
 
 The design source lives in three files. Components consume from them — never invent at the use-site.
